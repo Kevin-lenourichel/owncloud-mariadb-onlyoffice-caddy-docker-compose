@@ -1,0 +1,97 @@
+version: "3"
+
+services:
+
+  owncloud:
+    image: owncloud/server:10
+    container_name: owncloud_server
+    restart: always
+    depends_on:
+      - mariadb
+      - redis
+    environment:
+      - OWNCLOUD_DOMAIN=
+      - OWNCLOUD_TRUSTED_DOMAINS=
+      - OWNCLOUD_DB_TYPE=mysql
+      - OWNCLOUD_DB_NAME=owncloud
+      - OWNCLOUD_DB_USERNAME=owncloud
+      - OWNCLOUD_DB_PASSWORD=
+      - OWNCLOUD_DB_HOST=mariadb
+      - OWNCLOUD_ADMIN_USERNAME=
+      - OWNCLOUD_ADMIN_PASSWORD=
+      - OWNCLOUD_MYSQL_UTF8MB4=true
+      - OWNCLOUD_REDIS_ENABLED=true
+      - OWNCLOUD_REDIS_HOST=redis
+    healthcheck:
+      test: ["CMD", "/usr/bin/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - ./files:/mnt/data
+    networks:
+      - internal
+      - proxy
+    labels:
+      caddy: exemple.com
+      caddy.reverse_proxy: "{{upstreams 8080}}"
+      caddy.header.Strict-Transport-Security: '"max-age=15552000;"'
+
+  mariadb:
+    image: mariadb:10 # minimum required ownCloud version is 10.9
+    container_name: owncloud_mariadb
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=
+      - MYSQL_USER=owncloud
+      - MYSQL_PASSWORD=
+      - MYSQL_DATABASE=owncloud
+      - MARIADB_AUTO_UPGRADE=1
+    command: ["--max-allowed-packet=128M", "--innodb-log-file-size=64M"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-u", "root", "--password=theslik888"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./mysql:/var/lib/mysql
+      - ./mysql-conf.d:/etc/mysql/conf.d
+    networks:
+      - internal
+
+  redis:
+    image: redis:6
+    container_name: owncloud_redis
+    restart: always
+    command: ["--databases", "1"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./redis:/data
+    networks:
+      - internal
+
+  onlyoffice-document-server:
+    image: onlyoffice/documentserver:7.3
+    stdin_open: true
+    tty: true
+    restart: always
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=
+    volumes:
+      - ./document-data:/var/www/onlyoffice/Data
+      - ./document-log:/var/log/onlyoffice
+    networks:
+      - proxy
+    labels:
+      caddy: exemple.com
+      caddy.reverse_proxy: "{{upstreams}}"
+
+networks:
+  proxy:
+    external: true
+  internal:
